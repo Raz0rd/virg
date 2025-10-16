@@ -1,0 +1,486 @@
+// Payment modal: capture name/email, generate CPF, and process payment via SuitPay PIX
+(function(){
+  const PLAN_ATTRS = {
+    // Map element key to price label and internal plan ids
+    'primary': { label: '30 Dias', price: 'R$ 19.90', plan: '30d' },
+    '3m': { label: '3 Meses', price: 'R$ 39,90', plan: '3m' },
+    '1y': { label: '1 Ano', price: 'R$ 49,90', plan: '1y' },
+    'life': { label: 'Vitalício', price: 'R$ 89,90', plan: 'life' },
+    'popup': { label: 'Promo', price: 'R$ 19.90', plan: 'promo' }
+  };
+
+  function $(sel, ctx){ return (ctx||document).querySelector(sel); }
+  function $all(sel, ctx){ return Array.from((ctx||document).querySelectorAll(sel)); }
+
+  const overlay = $('#paymentModal');
+  const form = $('#pmForm');
+  const closeBtn = $('#pmClose');
+  const nameInput = $('#pmName');
+  const emailInput = $('#pmEmail');
+  const planLabel = $('#pmPlanLabel');
+  const planPrice = $('#pmPlanPrice');
+  const bumpWrap = document.getElementById('pmBump');
+  const bumpCheck = document.getElementById('pmBumpCheck');
+  const bumpText = document.getElementById('pmBumpText');
+  let selectedPlan = PLAN_ATTRS.primary; // default
+  let selectedOfferId = null; // optional: direct offer id override
+  let isPPVMode = false; // guard to prevent default flow in PPV purchases
+
+  function planByCode(code){
+    if (!code) return null;
+    const v = String(code).toLowerCase();
+    // Find by internal plan code within PLAN_ATTRS values
+    const found = Object.values(PLAN_ATTRS).find(p => p.plan === v);
+    return found || null;
+  }
+
+  // Configuração simples de Order Bump por plano base
+  // Ex.: quando base = 30d (R$ 9,90), bump oferece upgrade para 1y (R$ 49,90) [offerId 47137]
+  const BUMP_BY_PLAN = {
+    '30d': { label: 'Adicionar 1 ano com bônus', price: 'R$ 49,90', plan: '1y', offerId: 47137 },
+    '3m':  { label: 'Trocar para 1 ano com bônus', price: 'R$ 49,90', plan: '1y', offerId: 47137 }
+  };
+
+  function openModal(plan){
+    selectedPlan = plan || PLAN_ATTRS.primary;
+    isPPVMode = (selectedPlan && selectedPlan.plan === 'ppv');
+    if (planLabel) planLabel.textContent = selectedPlan.label;
+    if (planPrice) planPrice.textContent = selectedPlan.price;
+    if (overlay){ overlay.classList.add('active'); document.body.classList.add('popup-active'); }
+    if (nameInput) nameInput.focus({ preventScroll: true });
+
+    // Mostrar/ocultar bump
+    const bumpCfg = BUMP_BY_PLAN[selectedPlan.plan];
+    if (bumpWrap && bumpCheck && bumpText) {
+      if (bumpCfg) {
+        bumpWrap.style.display = '';
+        bumpCheck.checked = false;
+        bumpText.textContent = `${bumpCfg.label} por ${bumpCfg.price}`;
+      } else {
+        bumpWrap.style.display = 'none';
+        bumpCheck.checked = false;
+      }
+    }
+  }
+  function closeModal(){ if (overlay){ overlay.classList.remove('active'); document.body.classList.remove('popup-active'); } }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (overlay) overlay.addEventListener('click', (e)=>{ if (e.target === overlay) closeModal(); });
+
+  function showErr(el, msg){ const span = document.querySelector('.pm-err[data-for="'+el.id+'"]'); if (span) span.textContent = msg || ''; }
+  function validEmail(v){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v); }
+  
+  function getAmountFromPrice(priceStr) {
+    // Extrai valor numérico de "R$ 9,90" -> 9.90
+    const match = (priceStr || '').match(/[\d,]+/);
+    if (!match) return 0;
+    return parseFloat(match[0].replace(',', '.'));
+  }
+
+  // Brazilian CPF generator (valid according to check digits)
+  function generateCPF(){
+    const n = [];
+    for (let i=0;i<9;i++){ n.push(Math.floor(Math.random()*10)); }
+    // d1
+    let d1 = 0; for (let i=0, w=10; i<9; i++, w--) d1 += n[i]*w; d1 = 11 - (d1 % 11); if (d1 >= 10) d1 = 0;
+    // d2
+    let d2 = 0; for (let i=0, w=11; i<9; i++, w--) d2 += n[i]*w; d2 += d1*2; d2 = 11 - (d2 % 11); if (d2 >= 10) d2 = 0;
+    return `${n[0]}${n[1]}${n[2]}${n[3]}${n[4]}${n[5]}${n[6]}${n[7]}${n[8]}${d1}${d2}`;
+  }
+
+  function collectUTMs(){
+    const out = {};
+    const qs = new URLSearchParams(window.location.search);
+    ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id'].forEach(k=>{
+      if (qs.get(k)) out[k] = qs.get(k);
+    });
+    return out;
+  }
+
+  function setLoading(btn, loading){
+    if (!btn) return;
+    if (loading){
+      btn.disabled = true;
+      btn.dataset.prevText = btn.textContent;
+      btn.textContent = 'Gerando PIX...';
+    } else {
+      btn.disabled = false;
+      if (btn.dataset.prevText) btn.textContent = btn.dataset.prevText;
+    }
+  }
+
+  // PIX modal controls
+  let pixOverlay, pixCodeEl, pixAmountEl, pixCloseBtn, pixCopyBtn;
+  let pixCodeInputEl; // visible input to mirror PIX code
+  let pixQrEl, pixStatusEl, pixCountdownEl, pixCheckBtn;
+  let txId = null; // transaction identifier from backend
+  let pollHandle = null; let countdown = 10*60; // 10 minutes
+  let paidHandled = false; let currentAmount = 0; let currentGateway = 'suitpay';
+  const DEFAULT_SUCCESS_URL = '/perfil/';
+  function getSuccessUrl(){
+    try {
+      if (typeof window.SUCCESS_URL === 'string' && window.SUCCESS_URL) return window.SUCCESS_URL;
+      const attr = document.body && document.body.getAttribute('data-success-url');
+      if (attr) return attr;
+    } catch(e){}
+    return DEFAULT_SUCCESS_URL;
+  }
+  function ensurePixEls(){
+    pixOverlay = pixOverlay || document.getElementById('pixModal');
+    pixCodeEl = pixCodeEl || document.getElementById('pixCode');
+    pixCodeInputEl = pixCodeInputEl || document.getElementById('txtCodigoPix');
+    pixAmountEl = pixAmountEl || document.getElementById('pixAmount');
+    pixCloseBtn = pixCloseBtn || document.getElementById('pixClose');
+    pixCopyBtn = pixCopyBtn || document.getElementById('pixCopy');
+    pixQrEl = pixQrEl || document.getElementById('pixQr');
+    if (pixCloseBtn){ pixCloseBtn.onclick = ()=>{ pixOverlay?.classList.remove('active'); document.body.classList.remove('popup-active'); stopPolling(); } }
+    if (pixOverlay){ pixOverlay.addEventListener('click', (e)=>{ if (e.target === pixOverlay){ pixOverlay.classList.remove('active'); document.body.classList.remove('popup-active'); } }); }
+    if (pixCopyBtn){
+      if (!pixCopyBtn.dataset.origText) pixCopyBtn.dataset.origText = pixCopyBtn.textContent || 'Copiar';
+      pixCopyBtn.onclick = async ()=>{
+        const text = (pixCodeInputEl && pixCodeInputEl.value) || pixCodeEl?.textContent || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          pixCopyBtn.textContent = 'Copiado!';
+          setTimeout(()=> pixCopyBtn.textContent = pixCopyBtn.dataset.origText, 2000);
+        } catch {}
+      };
+    }
+    pixStatusEl = pixStatusEl || document.getElementById('pixStatus');
+    pixCountdownEl = pixCountdownEl || document.getElementById('pixCountdown');
+    pixCheckBtn = pixCheckBtn || document.getElementById('pixCheck');
+    if (pixCheckBtn){ pixCheckBtn.onclick = ()=>{ if (txId) checkStatus(); } }
+  }
+
+  function setStatusLabel(status){
+    if (!pixStatusEl) return;
+    const map = { pending: 'aguardando pagamento', approved: 'pago', paid: 'pago', completed: 'pago', canceled: 'cancelado', expired: 'expirado' };
+    const text = map[String(status||'').toLowerCase()] || String(status||'');
+    pixStatusEl.textContent = 'Status: ' + text;
+  }
+
+  function fmtTime(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; }
+
+  function startPolling(){
+    stopPolling(); countdown = 10*60; if (pixCountdownEl) pixCountdownEl.textContent = fmtTime(countdown);
+    pollHandle = setInterval(()=>{
+      // countdown tick
+      countdown--; if (pixCountdownEl) pixCountdownEl.textContent = fmtTime(Math.max(0,countdown));
+      if (countdown <= 0){ stopPolling(); setStatusLabel('expired'); return; }
+      checkStatus();
+    }, 1000);
+  }
+
+  function stopPolling(){ if (pollHandle){ clearInterval(pollHandle); pollHandle = null; } }
+
+  async function checkStatus(){
+    if (!txId) return;
+    try {
+      const res = await fetch('/api/pix/verificar/' + encodeURIComponent(txId), { credentials:'same-origin' });
+      if (!res.ok) return;
+      const result = await res.json();
+      if (result && result.success && result.data){
+        const status = result.data.status;
+        setStatusLabel(status);
+        const s = String(status).toLowerCase();
+        // Umbrela usa 'PAID' como status de pagamento confirmado
+        if (s === 'paid' || result.data.pago){
+          onPaid();
+        }
+        if (['paid','refused','canceled','refunded'].includes(s)){
+          stopPolling();
+        }
+      }
+    } catch(e){}
+  }
+
+  function onPaid(){
+    if (paidHandled) return; paidHandled = true;
+    setStatusLabel('paid');
+    try {
+      // Facebook Pixel Purchase event
+      if (typeof fbq === 'function') {
+        fbq('track', 'Purchase', { value: Number(currentAmount)||0, currency: 'BRL' });
+      }
+    } catch(e){}
+    try {
+      // GTM / dataLayer purchase event if available
+      if (window.dataLayer && Array.isArray(window.dataLayer)) {
+        window.dataLayer.push({
+          event: 'purchase',
+          value: Number(currentAmount)||0,
+          currency: 'BRL',
+          transaction_id: txId || '',
+          gateway: currentGateway || ''
+        });
+      }
+    } catch(e){}
+    try {
+      // Custom hook for other trackers
+      const detail = { amount: Number(currentAmount)||0, currency: 'BRL', id: txId, gateway: currentGateway };
+      document.dispatchEvent(new CustomEvent('pix:paid', { detail }));
+    } catch(e){}
+    // Redirect shortly after marking paid
+    setTimeout(()=>{ try { window.location.href = getSuccessUrl(); } catch(e){} }, 800);
+  }
+
+  function showPix(qrCode, amount, identifier, gateway){
+    ensurePixEls();
+  if (pixCodeEl) pixCodeEl.textContent = qrCode;
+  if (pixCodeInputEl) { pixCodeInputEl.value = qrCode; }
+  // New markup has a separate static 'R$' element; only set the numeric portion here
+  if (pixAmountEl) pixAmountEl.textContent = amount ? (amount.toFixed(2).replace('.', ',')) : '';
+    txId = identifier || null; setStatusLabel('pending');
+    currentAmount = Number(amount)||0; currentGateway = gateway || currentGateway;
+    // Render visual QR code
+    if (pixQrEl) {
+      // Try to ensure QRCode library is available; if not, load dynamically
+      const ensureQRCodeLib = () => new Promise((resolve)=>{
+        if (window.QRCode) return resolve(true);
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        s.async = true; s.onload = ()=> resolve(true); s.onerror = ()=> resolve(false);
+        document.head.appendChild(s);
+      });
+      ensureQRCodeLib().then((ok)=>{
+        try {
+          pixQrEl.innerHTML = '';
+          if (ok && window.QRCode) {
+            const level = (window.QRCode && QRCode.CorrectLevel && QRCode.CorrectLevel.M) ? QRCode.CorrectLevel.M : undefined;
+            const opts = { text: qrCode, width: 200, height: 200 };
+            if (level !== undefined) opts.correctLevel = level;
+            new QRCode(pixQrEl, opts);
+          } else {
+            // fallback: keep the code visible for copy; optionally show a note
+            const note = document.createElement('div');
+            note.style.cssText = 'color:#6b7280;font-size:12px;margin-top:6px;text-align:center;';
+            note.textContent = 'Não foi possível carregar a imagem do QR. Copie o código acima.';
+            pixQrEl.appendChild(note);
+          }
+        } catch(e){}
+      });
+    }
+    if (pixOverlay){ pixOverlay.classList.add('active'); document.body.classList.add('popup-active'); }
+    startPolling();
+  }
+
+  // Public helper to start a PPV purchase using same modal/PIX flow
+  window.openPpvPurchase = function(postId, priceCents, priceLabel, profileSlug){
+    // Open the same modal to collect name/email (reuse UI but change title/subcopy)
+    const title = document.getElementById('pm-title');
+    const sub = document.querySelector('.pm-sub');
+    const planLbl = document.getElementById('pmPlanLabel');
+    const planPriceEl = document.getElementById('pmPlanPrice');
+    if (title) title.textContent = 'Comprar vídeo avulso';
+    if (sub) sub.textContent = 'Preencha seus dados para gerar o PIX e liberar este vídeo.';
+    if (planLbl) planLbl.textContent = 'Vídeo avulso';
+    if (planPriceEl) planPriceEl.textContent = priceLabel || '';
+
+  openModal({ label: 'Vídeo avulso', price: priceLabel || '', plan: 'ppv' });
+
+    // Intercept form submit once for PPV
+    if (!form) return;
+    const originalHandler = form.__ppvSubmitHandler || null;
+    if (originalHandler) return; // already wired
+    const handler = function(e){
+      e.preventDefault();
+      const name = (nameInput?.value || '').trim();
+      const email = (emailInput?.value || '').trim();
+      const errorBox = document.getElementById('pmError');
+      if (errorBox) { errorBox.style.display='none'; errorBox.textContent=''; }
+      let ok = true;
+      if (!name){ showErr(nameInput, 'Informe o nome completo'); ok = false; } else { showErr(nameInput, ''); }
+      if (!email || !validEmail(email)){ showErr(emailInput, 'E-mail inválido'); ok = false; } else { showErr(emailInput, ''); }
+      if (!ok) return;
+      const cpf = generateCPF();
+      const btn = form.querySelector('.pm-submit');
+      setLoading(btn, true);
+      const payload = { postId, name, email, cpf };
+      if (profileSlug) payload.profileSlug = profileSlug;
+      fetch('/api/create_ppv_pix.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      }).then(async res => {
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok){
+          const msg = (data && (data.error || data.message)) ? (data.error || data.message) : 'Falha ao gerar PIX';
+          if (errorBox){ errorBox.textContent = msg; errorBox.style.display='block'; }
+          throw new Error(msg);
+        }
+        closeModal();
+        showPix(data.qrCode, data.amount, data.identifier, data.gateway);
+      }).catch(err=>{
+        showErr(emailInput, (err && err.message) ? err.message : 'Erro ao gerar PIX. Tente novamente.');
+      }).finally(()=> setLoading(btn, false));
+    };
+    form.addEventListener('submit', handler, { once: true });
+    form.__ppvSubmitHandler = handler;
+  };
+
+  if (form){
+    form.addEventListener('submit', function(e){
+      // If we're in PPV mode, let the one-time PPV handler manage the submit
+      if (isPPVMode || (selectedPlan && selectedPlan.plan === 'ppv')) {
+        return; // PPV handler attached in openPpvPurchase will call preventDefault
+      }
+      e.preventDefault();
+      const name = (nameInput?.value || '').trim();
+      const email = (emailInput?.value || '').trim();
+      const errorBox = document.getElementById('pmError');
+      if (errorBox) { errorBox.style.display='none'; errorBox.textContent=''; }
+      let ok = true;
+      if (!name){ showErr(nameInput, 'Informe o nome completo'); ok = false; } else { showErr(nameInput, ''); }
+      if (!email || !validEmail(email)){ showErr(emailInput, 'E-mail inválido'); ok = false; } else { showErr(emailInput, ''); }
+      if (!ok) return;
+
+      // Generate random valid CPF
+      const cpf = generateCPF();
+
+      const submitBtn = form.querySelector('.pm-submit');
+      setLoading(submitBtn, true);
+
+      // Collect order bumps if available
+      let selectedBumps = [];
+      if (window.OrderBumps && typeof window.OrderBumps.getSelected === 'function') {
+        selectedBumps = window.OrderBumps.getSelected();
+      }
+
+      // Prepare form data for SuitPay
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('email', email);
+      formData.append('cpf', cpf);
+      formData.append('plan_id', selectedPlan.plan);
+      
+      // Calculate amount (plan + order bumps)
+      let totalAmount = getAmountFromPrice(selectedPlan.price);
+      
+      // Se bump marcado (sistema antigo), usar valores do bump
+      if (bumpCheck && bumpCheck.checked) {
+        const bumpCfg = BUMP_BY_PLAN[selectedPlan.plan];
+        if (bumpCfg) {
+          formData.set('plan_id', bumpCfg.plan);
+          totalAmount = getAmountFromPrice(bumpCfg.price);
+        }
+      }
+      
+      // Add order bumps to total
+      if (selectedBumps.length > 0) {
+        selectedBumps.forEach(bump => {
+          totalAmount += getAmountFromPrice(bump.price);
+        });
+        formData.append('order_bumps', JSON.stringify(selectedBumps));
+      }
+      
+      formData.append('amount', totalAmount);
+      formData.append('csrf_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
+      
+      // Add UTM parameters
+      const utms = collectUTMs();
+
+      // Preparar payload para API Express
+      const payload = {
+        nome: name,
+        email: email,
+        cpf: cpf,
+        telefone: '11999999999',
+        valor: totalAmount,
+        produto: 'Virginia Fonseca - Privacy',
+        orderBumps: selectedBumps,
+        endereco: {
+          rua: '',
+          numero: '',
+          complemento: '',
+          cep: '',
+          bairro: '',
+          cidade: '',
+          estado: ''
+        }
+      };
+
+      fetch('/api/pix/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin'
+      }).then(async res => {
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok || !data.success){
+          // Show detailed error in the form modal
+          const msg = data.error || 'Falha ao gerar PIX';
+          if (errorBox){ errorBox.textContent = msg; errorBox.style.display='block'; }
+          throw new Error(msg);
+        }
+        // Close form modal, open PIX modal
+        closeModal();
+        showPix(data.data.qrCode, totalAmount, data.data.id, 'umbrela');
+        
+        // Clear order bumps selection after successful payment initiation
+        if (window.OrderBumps && typeof window.OrderBumps.clear === 'function') {
+          window.OrderBumps.clear();
+        }
+      }).catch(err => {
+        // Keep error also near email field for accessibility
+        showErr(emailInput, (err && err.message) ? err.message : 'Erro ao gerar PIX. Tente novamente.');
+      }).finally(()=> setLoading(submitBtn, false));
+    });
+  }
+
+  // Wire triggers: buttons/links open modal instead of direct navigation
+  function intercept(anchor, plan){
+    if (!anchor) return;
+    anchor.addEventListener('click', function(e){
+      // allow ctrl/cmd open in new tab
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1) return;
+      e.preventDefault();
+      // Allow overriding by data attributes
+      const dp = this.getAttribute('data-plan');
+      const doffer = this.getAttribute('data-offer-id');
+      selectedOfferId = doffer || null;
+      let chosen = plan;
+      const byCode = planByCode(dp);
+      if (byCode) chosen = byCode;
+      openModal(chosen);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // Hydrate plan prices/offer IDs from server config if available
+    try {
+      if (window.PLAN_CONF && window.PLAN_CONF.price) {
+        const map = window.PLAN_CONF.price;
+        if (map['30d']) PLAN_ATTRS.primary.price = map['30d'];
+        if (map['3m']) PLAN_ATTRS['3m'].price = map['3m'];
+        if (map['1y']) PLAN_ATTRS['1y'].price = map['1y'];
+        if (map['life']) PLAN_ATTRS['life'].price = map['life'];
+        if (PLAN_ATTRS.popup && map['30d']) PLAN_ATTRS.popup.price = map['30d'];
+      }
+      if (window.PLAN_CONF && window.PLAN_CONF.offerId) {
+        const oid = window.PLAN_CONF.offerId['1y'];
+        if (oid) { BUMP_BY_PLAN['30d'].offerId = parseInt(oid, 10) || BUMP_BY_PLAN['30d'].offerId; BUMP_BY_PLAN['3m'].offerId = parseInt(oid, 10) || BUMP_BY_PLAN['3m'].offerId; }
+      }
+    } catch (e) {}
+
+    // Primary CTAs (30d)
+    intercept(document.querySelector('.plan-primary.footer-plan'), PLAN_ATTRS.primary);
+    intercept(document.querySelector('.plan-primary:not(.footer-plan)'), PLAN_ATTRS.primary);
+    const outlines = document.querySelectorAll('.plan-outline.subscription-link');
+    outlines.forEach((a)=>{
+      // Map by visible label if href changes
+      const txt = a.innerText.toLowerCase();
+      if (txt.includes('3 meses')) intercept(a, PLAN_ATTRS['3m']);
+      else if (txt.includes('1 ano')) intercept(a, PLAN_ATTRS['1y']);
+      else if (txt.includes('vital')) intercept(a, PLAN_ATTRS['life']);
+      else intercept(a, PLAN_ATTRS['3m']);
+    });
+    intercept(document.querySelector('.subscription-button-popup'), PLAN_ATTRS.popup);
+
+    // Generic hooks: any element with [data-plan] or [data-offer-id]
+    document.querySelectorAll('[data-plan], [data-offer-id]').forEach(el => {
+      // Skip ones already wired to avoid duplicate handlers
+      if (!el.__wiredPlan) {
+        el.__wiredPlan = true;
+        intercept(el, planByCode(el.getAttribute('data-plan')) || PLAN_ATTRS.primary);
+      }
+    });
+  });
+})();

@@ -1,0 +1,242 @@
+/**
+ * Cloaker JavaScript - Box Premiada
+ * Sistema de detecÃ§Ã£o de bots no lado cliente
+ */
+
+class CloakerTracker {
+    constructor(options = {}) {
+        this.config = {
+            apiUrl: '/api/cloaker/check.php',
+            sourcePage: window.location.pathname,
+            sessionId: this.generateSessionId(),
+            debug: options.debug || false,
+            ...options
+        };
+        
+        this.data = {
+            source_page: this.config.sourcePage,
+            session_id: this.config.sessionId,
+            has_javascript: true,
+            page_time: 0,
+            mouse_events: 0,
+            screen_resolution: `${screen.width}x${screen.height}`,
+            user_agent: navigator.userAgent,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            language: navigator.language,
+            platform: navigator.platform,
+            touch_support: 'ontouchstart' in window
+        };
+        
+        this.startTime = Date.now();
+        this.mouseEventCount = 0;
+        this.checkTimeout = null;
+        
+        this.init();
+    }
+    
+    generateSessionId() {
+        return 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    }
+    
+    init() {
+        this.log('Cloaker inicializado');
+        
+        // Detectar geolocalizaÃ§Ã£o
+        this.getGeolocation();
+        
+        // Monitorar eventos de mouse
+        this.setupMouseTracking();
+        
+        // Detectar capacidades do navegador
+        this.detectCapabilities();
+        
+        // Verificar apÃ³s delay inicial
+        setTimeout(() => {
+            this.performCheck();
+        }, 2000);
+        
+        // VerificaÃ§Ã£o adicional apÃ³s mais tempo
+        setTimeout(() => {
+            this.performCheck();
+        }, 5000);
+    }
+    
+    getGeolocation() {
+        // Tentar obter geolocalizaÃ§Ã£o via IP
+        fetch('http://ip-api.com/json/?fields=country,countryCode,region,city,lat,lon,timezone,isp')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    this.data.country = data.countryCode;
+                    this.data.region = data.region;
+                    this.data.city = data.city;
+                    this.data.latitude = data.lat;
+                    this.data.longitude = data.lon;
+                    this.data.isp = data.isp;
+                    this.log('GeolocalizaÃ§Ã£o obtida:', data);
+                }
+            })
+            .catch(error => {
+                this.log('Erro na geolocalizaÃ§Ã£o:', error);
+            });
+    }
+    
+    setupMouseTracking() {
+        let lastMouseMove = 0;
+        
+        document.addEventListener('mousemove', (e) => {
+            const now = Date.now();
+            if (now - lastMouseMove > 100) { // Throttle events
+                this.mouseEventCount++;
+                lastMouseMove = now;
+                
+                // Detectar padrÃµes suspeitos de movimento
+                if (this.mouseEventCount === 1) {
+                    this.data.first_mouse_time = now - this.startTime;
+                }
+                
+                // Calcular velocidade mÃ©dia do mouse
+                if (this.mouseEventCount % 10 === 0) {
+                    this.data.mouse_velocity = this.calculateMouseVelocity();
+                }
+            }
+        });
+        
+        document.addEventListener('click', () => {
+            this.data.click_events = (this.data.click_events || 0) + 1;
+        });
+        
+        document.addEventListener('scroll', () => {
+            this.data.scroll_events = (this.data.scroll_events || 0) + 1;
+        });
+        
+        document.addEventListener('keydown', () => {
+            this.data.keyboard_events = (this.data.keyboard_events || 0) + 1;
+        });
+    }
+    
+    calculateMouseVelocity() {
+        // ImplementaÃ§Ã£o simplificada de cÃ¡lculo de velocidade
+        return Math.random() * 100; // Placeholder
+    }
+    
+    detectCapabilities() {
+        // Detectar capacidades do navegador que bots podem nÃ£o ter
+        this.data.webgl_support = !!window.WebGLRenderingContext;
+        this.data.canvas_support = !!document.createElement('canvas').getContext;
+        this.data.local_storage = !!window.localStorage;
+        this.data.session_storage = !!window.sessionStorage;
+        this.data.cookies_enabled = navigator.cookieEnabled;
+        this.data.do_not_track = navigator.doNotTrack;
+        this.data.hardware_concurrency = navigator.hardwareConcurrency || 0;
+        this.data.device_memory = navigator.deviceMemory || 0;
+        this.data.connection_type = navigator.connection ? navigator.connection.effectiveType : 'unknown';
+        
+        // Detectar plugins
+        this.data.plugins_count = navigator.plugins ? navigator.plugins.length : 0;
+        
+        // Detectar se Ã© headless
+        this.data.headless_detected = this.detectHeadless();
+        
+        // Detectar automaÃ§Ã£o
+        this.data.automation_detected = this.detectAutomation();
+    }
+    
+    detectHeadless() {
+        // VÃ¡rias verificaÃ§Ãµes para detectar navegadores headless
+        const checks = [
+            !window.outerHeight,
+            !window.outerWidth,
+            navigator.webdriver,
+            window.phantom !== undefined,
+            window._phantom !== undefined,
+            window.callPhantom !== undefined,
+            window.chrome && window.chrome.runtime && window.chrome.runtime.onConnect === null,
+            window.chrome && window.chrome.runtime && window.chrome.runtime.onConnect === undefined,
+            navigator.userAgent.includes('HeadlessChrome'),
+            navigator.userAgent.includes('PhantomJS'),
+            navigator.userAgent.includes('SlimerJS')
+        ];
+        
+        return checks.some(check => check);
+    }
+    
+    detectAutomation() {
+        // Detectar sinais de automaÃ§Ã£o
+        const checks = [
+            navigator.webdriver,
+            window.domAutomation !== undefined,
+            window.domAutomationController !== undefined,
+            window.selenium !== undefined,
+            window._Selenium_IDE_Recorder !== undefined,
+            document.documentElement.getAttribute('selenium') !== null,
+            document.documentElement.getAttribute('webdriver') !== null,
+            document.documentElement.getAttribute('driver') !== null
+        ];
+        
+        return checks.some(check => check);
+    }
+    
+    performCheck() {
+        // Atualizar tempo na pÃ¡gina
+        this.data.page_time = Math.round((Date.now() - this.startTime) / 1000);
+        this.data.mouse_events = this.mouseEventCount;
+        
+        this.log('Realizando verificaÃ§Ã£o:', this.data);
+        
+        // Enviar dados para verificaÃ§Ã£o
+        fetch(this.config.apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(this.data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            this.log('Resultado da verificaÃ§Ã£o:', result);
+            
+            if (result.action === 'redirect' && result.redirect_url) {
+                this.log('Redirecionamento necessÃ¡rio para:', result.redirect_url);
+                
+                // Delay pequeno para parecer natural
+                setTimeout(() => {
+                    window.location.href = result.redirect_url;
+                }, Math.random() * 1000 + 500);
+            } else if (result.action === 'allow') {
+                this.log('Acesso liberado');
+                
+                // Disparar evento personalizado
+                window.dispatchEvent(new CustomEvent('cloaker:allowed', {
+                    detail: result
+                }));
+            }
+        })
+        .catch(error => {
+            this.log('Erro na verificaÃ§Ã£o:', error);
+        });
+    }
+    
+    log(message, data = null) {
+        if (this.config.debug) {
+            console.log('[Cloaker]', message, data);
+        }
+    }
+}
+
+// Auto-inicializaÃ§Ã£o
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar se o cloaker deve ser ativado
+    const cloakerEnabled = document.querySelector('meta[name="cloaker-enabled"]');
+    
+    if (cloakerEnabled && cloakerEnabled.content === '1') {
+        const debugMode = document.querySelector('meta[name="cloaker-debug"]');
+        
+        window.cloakerTracker = new CloakerTracker({
+            debug: debugMode && debugMode.content === '1'
+        });
+    }
+});
+
+// Expor para uso global
+window.CloakerTracker = CloakerTracker;

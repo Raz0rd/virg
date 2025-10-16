@@ -1,0 +1,262 @@
+function validateEmail(email) { 
+    var re = /\S+@\S+\.\S+/;
+    return re.test(email);
+}
+ 
+
+function validateName(name) { 
+    var regex = /^[a-zA-Z\s]*$/;
+    return regex.test(name.trim());
+}
+
+function validateCPF(cpf) {
+    cpf = cpf.replace(/[^\d]+/g, '');  
+    if (cpf.length !== 11) return false; 
+    var regex = /^(\d)\1{10}$/;
+    if (regex.test(cpf)) return false; 
+    var sum = 0;
+    var remainder;
+    for (var i = 1; i <= 9; i++) {
+        sum += parseInt(cpf.substring(i - 1, i)) * (11 - i);
+    }
+    remainder = (sum * 10) % 11;
+
+    if ((remainder === 10) || (remainder === 11)) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(9, 10))) return false;
+
+    sum = 0;
+    for (var i = 1; i <= 10; i++) {
+        sum += parseInt(cpf.substring(i - 1, i)) * (12 - i);
+    }
+    remainder = (sum * 10) % 11;
+
+    if ((remainder === 10) || (remainder === 11)) remainder = 0;
+    if (remainder !== parseInt(cpf.substring(10, 11))) return false;
+
+    return true;
+}
+function alerta(txt)
+{
+    Swal.fire({
+        title: 'Não foi possivel continuar!',
+        text: txt,
+        icon: 'error',
+        confirmButtonText: 'Entendi'
+    })
+}
+
+async function postDatateste(url = '', data = {}) 
+{ 
+    const options = {
+        method: 'POST',  
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded', 
+        },
+        body: new URLSearchParams(data)  
+    };
+    const response = await fetch(url, options);
+    return response.json();
+}
+async function process ()
+{
+    var email           = $("#email").val();
+    var telephone       = $("#telephone").val();
+    var name            = $("#name").val();
+    var documento        = $("#document").val(); 
+    if ( !name.includes(" ") ) {
+        alerta("Verifique os dados inseridos");
+        return;
+    }
+
+    var splitedname   = name.split(" ");
+    var firstname     = splitedname[0]; 
+    if ( validateEmail (email ) && validateCPF ( documento ) && validateName(firstname) )  
+    {
+        // Salvar dados no localStorage para usar na próxima página
+        localStorage.setItem('checkout_name', name);
+        localStorage.setItem('checkout_email', email);
+        localStorage.setItem('checkout_telephone', telephone);
+        localStorage.setItem('checkout_document', documento);
+        
+        setTimeout(function() {
+            location.href = "pix.html";
+        }, 500);
+    } else {
+        alerta("Verifique os dados inseridos");
+    }
+} 
+function changeMethod ( method ) {
+    location.href = "pagamento-"+method;
+}
+
+function finalizar_step (  )
+{
+    document.querySelector('#loading_ajax_gif').style.display = "";
+    setTimeout( function()  {
+        alerta("A opção de pagamento selecionada não está disponível no momento! \n\n        Nenhum valor foi cobrado em seu cartão.\n\nPara continuar utilize outra de nossas forma(s) de pagamento(s).")
+        document.querySelector('#loading_ajax_gif').style.display = "none";
+        setTimeout ( function () {
+			changeMethod("pix");
+		},1000*15);
+    }, 1000 * 5);
+}
+
+function finalizar (  ) {
+
+    document.querySelector('#loading_ajax_gif').style.display = "";
+
+    setTimeout( function()  
+    {  
+        location.replace("finalizar-compra");
+    }, 1000 * 4);
+}
+
+function toggle_summary() 
+{
+    var currently =  
+    (
+        document.querySelector("#purchase-summary__body").style.display == "none"
+    ) ? false : true;
+    
+    document.querySelector("#purchase-summary__body").style.display =  ( currently ) ? "none" : "";
+}
+
+// ============================================================================
+// INTEGRAÇÃO COM API UMBRELA
+// ============================================================================
+
+const UMBRELA_CONFIG = {
+    apiKey: '84f2022f-a84b-4d63-a727-1780e6261fe8',
+    baseUrl: 'https://api-gateway.umbrellapag.com/api',
+    userAgent: 'UMBRELLAB2B/1.0'
+};
+
+// Criar transação PIX na Umbrela
+async function criarTransacaoPix(dados) {
+    const response = await fetch(`${UMBRELA_CONFIG.baseUrl}/user/transactions`, {
+        method: 'POST',
+        headers: {
+            'x-api-key': UMBRELA_CONFIG.apiKey,
+            'User-Agent': UMBRELA_CONFIG.userAgent,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            amount: Math.round(dados.valor * 100), // Converter para centavos
+            currency: 'BRL',
+            paymentMethod: 'PIX',
+            customer: {
+                name: dados.nome,
+                email: dados.email,
+                document: {
+                    number: dados.cpf.replace(/[^\d]/g, ''),
+                    type: 'CPF'
+                },
+                phone: dados.telefone.replace(/[^\d]/g, ''),
+                externalRef: '',
+                address: {
+                    street: 'Rua Principal',
+                    streetNumber: '123',
+                    complement: '',
+                    zipCode: '01000000',
+                    neighborhood: 'Centro',
+                    city: 'São Paulo',
+                    state: 'SP',
+                    country: 'br'
+                }
+            },
+            shipping: {
+                fee: 0,
+                address: {
+                    street: 'Rua Principal',
+                    streetNumber: '123',
+                    complement: '',
+                    zipCode: '01000000',
+                    neighborhood: 'Centro',
+                    city: 'São Paulo',
+                    state: 'SP',
+                    country: 'br'
+                }
+            },
+            items: [{
+                title: 'Virginia Privacy - Acesso Premium',
+                unitPrice: Math.round(dados.valor * 100),
+                quantity: 1,
+                tangible: false,
+                externalRef: ''
+            }],
+            pix: {
+                expiresInDays: 1
+            },
+            postbackUrl: '',
+            metadata: '',
+            traceable: true,
+            ip: '0.0.0.0'
+        })
+    });
+
+    const result = await response.json();
+    
+    if (result.status === 200 && result.data) {
+        return {
+            id: result.data.id,
+            qrCode: result.data.qrCode,
+            status: result.data.status,
+            expirationDate: result.data.pix?.expirationDate
+        };
+    }
+    
+    throw new Error(result.message || 'Erro ao criar transação');
+}
+
+// Verificar status do pagamento
+async function verificarPagamento(transactionId) {
+    const response = await fetch(
+        `${UMBRELA_CONFIG.baseUrl}/user/transactions/${transactionId}`,
+        {
+            method: 'GET',
+            headers: {
+                'x-api-key': UMBRELA_CONFIG.apiKey,
+                'User-Agent': UMBRELA_CONFIG.userAgent
+            }
+        }
+    );
+
+    const result = await response.json();
+    
+    if (result.status === 200 && result.data) {
+        return {
+            status: result.data.status,
+            pago: result.data.status === 'PAID',
+            paidAt: result.data.paidAt
+        };
+    }
+    
+    throw new Error(result.message || 'Erro ao verificar pagamento');
+}
+
+// Iniciar polling para verificar pagamento
+function iniciarVerificacaoPagamento(transactionId, callback) {
+    const interval = setInterval(async () => {
+        try {
+            const resultado = await verificarPagamento(transactionId);
+            
+            if (resultado.pago) {
+                clearInterval(interval);
+                callback('PAGO', resultado);
+            } else if (resultado.status === 'REFUSED' || resultado.status === 'CANCELED') {
+                clearInterval(interval);
+                callback('FALHOU', resultado);
+            }
+        } catch (error) {
+            console.error('Erro ao verificar pagamento:', error);
+        }
+    }, 5000); // Verifica a cada 5 segundos
+    
+    // Parar após 15 minutos
+    setTimeout(() => {
+        clearInterval(interval);
+        callback('TIMEOUT');
+    }, 15 * 60 * 1000);
+    
+    return interval;
+}
