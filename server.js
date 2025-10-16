@@ -118,34 +118,26 @@ app.post('/api/pix/criar', async (req, res) => {
             });
         }
         
-        // Processar valor do plano
-        const valorPlano = parseFloat(valor);
-        if (isNaN(valorPlano) || valorPlano <= 0) {
+        // O valor já vem CALCULADO do frontend (plano + order bumps)
+        // NÃO devemos recalcular aqui, apenas usar o que foi enviado
+        const valorTotal = parseFloat(valor);
+        if (isNaN(valorTotal) || valorTotal <= 0) {
             return res.status(400).json({
                 success: false,
                 error: 'Valor inválido'
             });
         }
         
-        // Processar order bumps
-        const bumps = Array.isArray(orderBumps) ? orderBumps : [];
-        let valorTotalBumps = 0;
-        
-        bumps.forEach(bump => {
-            if (bump.price) {
-                const preco = parseFloat(
-                    bump.price.toString().replace(/[R$\s]/g, '').replace(',', '.')
-                );
-                if (!isNaN(preco)) {
-                    valorTotalBumps += preco;
-                }
-            }
-        });
-        
-        // Valor total
-        const valorTotal = valorPlano + valorTotalBumps;
         const valorEmCentavos = Math.round(valorTotal * 100);
-        const valorPlanoEmCentavos = Math.round(valorPlano * 100);
+        
+        console.log('💰 Valor recebido do frontend:', valorTotal);
+        console.log('💰 Valor em centavos para Umbrela:', valorEmCentavos);
+        
+        // Processar order bumps apenas para LOG (não usar para cálculo)
+        const bumps = Array.isArray(orderBumps) ? orderBumps : [];
+        if (bumps.length > 0) {
+            console.log('🎁 Order Bumps inclusos:', bumps.map(b => `${b.name} - ${b.price}`).join(', '));
+        }
         
         // Limpar dados
         const cpfLimpo = cpf.replace(/[^0-9]/g, '');
@@ -163,31 +155,18 @@ app.post('/api/pix/criar', async (req, res) => {
         if (estado.length !== 2) estado = 'SP';
         
         // Montar items da transação
+        // Enviamos apenas 1 item com o valor TOTAL já calculado
         const items = [
             {
-                title: produto || 'Virginia Fonseca - Privacy',
-                unitPrice: valorPlanoEmCentavos,
+                title: produto || 'eBook - Rei da Foda',
+                unitPrice: valorEmCentavos,
                 quantity: 1,
                 tangible: true,
-                externalRef: 'plan_base'
+                externalRef: 'ebook_virginia'
             }
         ];
         
-        // Adicionar order bumps como items
-        bumps.forEach(bump => {
-            const preco = parseFloat(
-                bump.price.toString().replace(/[R$\s]/g, '').replace(',', '.')
-            );
-            if (!isNaN(preco) && preco > 0) {
-                items.push({
-                    title: `${bump.name} - Privacy (Order Bump)`,
-                    unitPrice: Math.round(preco * 100),
-                    quantity: 1,
-                    tangible: true,
-                    externalRef: `order_bump_${bump.name.toLowerCase().replace(/\s+/g, '_')}`
-                });
-            }
-        });
+        console.log('📦 Item enviado para Umbrela:', items[0]);
         
         // Dados da transação para Umbrela
         const dadosTransacao = {
