@@ -24,6 +24,14 @@ body {
     color: #ff6200;
 }
 
+.logo img {
+    max-width: 100%;
+    height: auto;
+    width: 280px;
+    display: block;
+    margin: 0 auto;
+}
+
 .message {
     font-size: 19px;
     color: #333;
@@ -59,6 +67,10 @@ body {
     .logo {
         font-size: 40px;
     }
+    
+    .logo img {
+        width: 240px;
+    }
 
     .message {
         font-size: 17px;
@@ -81,6 +93,10 @@ body {
     .logo {
         font-size: 32px;
     }
+    
+    .logo img {
+        width: 200px;
+    }
 
     .message {
         font-size: 15px;
@@ -97,21 +113,28 @@ body {
 @media (max-width: 480px) {
     .container {
         padding: 10%;
-        gap: 8px;
+        gap: 12px;
     }
 
     .logo {
         font-size: 28px;
     }
+    
+    .logo img {
+        width: 160px;
+    }
 
     .message {
         font-size: 14px;
-        max-width: 250px;
-        margin-bottom: 8px;
+        max-width: 280px;
+        margin-bottom: 12px;
+        line-height: 1.4;
     }
 
     .button {
-        padding: 10px 20px;
-        font-size: 12px;
+        padding: 12px 24px;
+        font-size: 13px;
+        width: 100%;
+        max-width: 280px;
     }
 }
