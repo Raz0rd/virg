@@ -8368,11 +8368,39 @@ Mas cuidado: depois de ver, não tem como desver. 😈
             (function(){
                 let selectedBumps = new Set();
                 
+                // Carregar do localStorage
+                function loadFromStorage() {
+                    try {
+                        const saved = localStorage.getItem('selectedOrderBumps');
+                        if (saved) {
+                            const parsed = JSON.parse(saved);
+                            selectedBumps = new Set(parsed);
+                            console.log('📦 Carregado do localStorage:', Array.from(selectedBumps));
+                        }
+                    } catch(e) {
+                        console.error('Erro ao carregar localStorage:', e);
+                    }
+                }
+                
+                // Salvar no localStorage
+                function saveToStorage() {
+                    try {
+                        const arr = Array.from(selectedBumps);
+                        localStorage.setItem('selectedOrderBumps', JSON.stringify(arr));
+                        console.log('💾 Salvo no localStorage:', arr);
+                    } catch(e) {
+                        console.error('Erro ao salvar localStorage:', e);
+                    }
+                }
+                
                 function initOrderBumps() {
                     const bumpList = document.getElementById('orderBumpList');
                     const bumpSummary = document.getElementById('orderBumpSummary');
                     
                     if (!bumpList || !window.ORDER_BUMPS) return;
+                    
+                    // Carregar seleções anteriores
+                    loadFromStorage();
                     
                     // Criar items dos order bumps
                     Object.entries(window.ORDER_BUMPS).forEach(([key, bump]) => {
@@ -8411,15 +8439,27 @@ Mas cuidado: depois de ver, não tem como desver. 😈
                             if (checkbox.checked) {
                                 selectedBumps.add(key);
                                 item.classList.add('selected');
+                                console.log('✅ Adicionado:', key, bump.name, bump.price);
                             } else {
                                 selectedBumps.delete(key);
                                 item.classList.remove('selected');
+                                console.log('❌ Removido:', key);
                             }
+                            saveToStorage();
                             updateSummary();
                         });
                         
+                        // Restaurar estado do localStorage
+                        if (selectedBumps.has(key)) {
+                            checkbox.checked = true;
+                            item.classList.add('selected');
+                        }
+                        
                         bumpList.appendChild(item);
                     });
+                    
+                    // Atualizar summary após carregar do localStorage
+                    updateSummary();
                 }
                 
                 function updateSummary() {
@@ -8448,12 +8488,20 @@ Mas cuidado: depois de ver, não tem como desver. 😈
                 
                 function getSelectedBumps() {
                     const selected = [];
+                    console.log('🔍 getSelectedBumps - selectedBumps:', Array.from(selectedBumps));
                     selectedBumps.forEach(key => {
-                        selected.push({
-                            key,
-                            ...window.ORDER_BUMPS[key]
-                        });
+                        const bumpData = window.ORDER_BUMPS[key];
+                        if (bumpData) {
+                            selected.push({
+                                key,
+                                name: bumpData.name,
+                                price: bumpData.price,
+                                originalPrice: bumpData.originalPrice
+                            });
+                            console.log('  ✓ Adicionando bump:', bumpData.name, bumpData.price);
+                        }
                     });
+                    console.log('📋 Total selecionados:', selected.length, selected);
                     return selected;
                 }
                 
@@ -8463,6 +8511,8 @@ Mas cuidado: depois de ver, não tem como desver. 😈
                     getSelected: getSelectedBumps,
                     clear: () => {
                         selectedBumps.clear();
+                        localStorage.removeItem('selectedOrderBumps');
+                        console.log('🧹 Order bumps limpos');
                         document.querySelectorAll('.order-bump-item').forEach(item => {
                             item.classList.remove('selected');
                             item.querySelector('.order-bump-checkbox').checked = false;
