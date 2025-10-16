@@ -1,0 +1,117 @@
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+    background-color: #fff;
+    text-align: center;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3%;
+    gap: 20px;
+}
+
+.logo {
+    font-size: 48px;
+    font-weight: bold;
+    color: #ff6200;
+}
+
+.message {
+    font-size: 19px;
+    color: #333;
+    max-width: 550px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.button {
+    background-color: #ff6600;
+    color: white;
+    padding: 16px 32px;
+    font-size: 15px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.button:hover {
+    background-color: #e55a00;
+}
+
+/* Tablets (telas entre 768px e 1024px) */
+@media (max-width: 1024px) {
+    .container {
+        padding: 5%;
+        gap: 15px;
+    }
+
+    .logo {
+        font-size: 40px;
+    }
+
+    .message {
+        font-size: 17px;
+        max-width: 450px;
+        margin-bottom: 15px;
+    }
+
+    .button {
+        padding: 14px 28px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 767px) {
+    .container {
+        padding: 8%;
+        gap: 10px;
+    }
+
+    .logo {
+        font-size: 32px;
+    }
+
+    .message {
+        font-size: 15px;
+        max-width: 300px;
+        margin-bottom: 10px;
+    }
+
+    .button {
+        padding: 12px 24px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 10%;
+        gap: 8px;
+    }
+
+    .logo {
+        font-size: 28px;
+    }
+
+    .message {
+        font-size: 14px;
+        max-width: 250px;
+        margin-bottom: 8px;
+    }
+
+    .button {
+        padding: 10px 20px;
+        font-size: 12px;
+    }
+}

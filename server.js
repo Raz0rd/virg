@@ -68,9 +68,20 @@ function validarCPF(cpf) {
 }
 
 // ============================================================================
-// ROTA: Página Principal
+// ROTA: Presell (Página de Verificação de Idade)
 // ============================================================================
 app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'presell.html'));
+});
+
+// ============================================================================
+// ROTA: Virginia (Página Principal da Comunidade)
+// ============================================================================
+app.get('/virginia', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/virginia/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 

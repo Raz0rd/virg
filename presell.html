@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!-- saved from url=(0028)https://www.oprivacy.com.br/ -->
+<html lang="pt-br"><script src="./presell_files/1310867997164562" async=""></script><script src="./presell_files/1087891833226357" async=""></script><script async="" src="./presell_files/fbevents.js.transferir"></script><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificação de Acesso - Comunidade Privada</title>
+    <link rel="stylesheet" href="./presell_files/stl.css">
+    <!-- Meta Pixel Code -->
+    <script>
+        !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        // Mirror pixels used on /virginia
+        fbq('init', '1087891833226357');
+        fbq('init', '1310867997164562');
+        fbq('track', 'PageView');
+    </script>
+    <noscript>
+        <img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1087891833226357&ev=PageView&noscript=1"/>
+        <img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1310867997164562&ev=PageView&noscript=1"/>
+    </noscript>
+</head>
+
+<body cz-shortcut-listen="true">
+    <div class="container">
+        <div class="logo">
+            <img src="./presell_files/privacy-logo.svg" alt="Logo">
+        </div>
+        <div class="message">
+            Este site é uma comunidade adulta que contém material explícito.<br>
+            Você deve ter 18 anos ou mais para entrar.
+        </div>
+        <button class="button" onclick="confirmAccess()">Tenho 18 anos ou mais - Entrar</button>
+    </div>
+
+    <script>
+        (function(){
+            const DEST = "/virginia";
+            // Ultra-light tracking beacon to admin KPIs
+            try {
+                function uuid(){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);});}
+                function getSID(){ try{ let v=localStorage.getItem('sid'); if(!v){ v=uuid(); localStorage.setItem('sid',v);} return v; }catch(e){ return uuid(); } }
+                function getUTM(){ const p=new URLSearchParams(location.search); return { utm_source:p.get('utm_source')||'', utm_medium:p.get('utm_medium')||'', utm_campaign:p.get('utm_campaign')||'', utm_content:p.get('utm_content')||'', utm_term:p.get('utm_term')||'' }; }
+                const SID=getSID();
+                const payload = { event_type:'pageview', sid:SID, url:location.pathname+location.search, referrer: document.referrer||'', ...getUTM() };
+                fetch('/api/track_visit.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
+            } catch(e) {}
+            try {
+                if (localStorage.getItem("ageConfirmed") === "1") {
+                    // Small delay to allow PageView to fire
+                    setTimeout(function(){ window.location.replace(DEST); }, 350);
+                    return;
+                }
+            } catch(e) {}
+            window.confirmAccess = function(){
+                try { localStorage.setItem("ageConfirmed", "1"); } catch(e) {}
+                // Small delay to allow click-related events/PageView to be sent
+                setTimeout(function(){ window.location.href = DEST; }, 150);
+            }
+        })();
+    </script>
+
+
+
+</body></html>
