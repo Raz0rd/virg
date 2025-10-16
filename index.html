@@ -8402,6 +8402,10 @@ Mas cuidado: depois de ver, não tem como desver. 😈
                     // Carregar seleções anteriores
                     loadFromStorage();
                     
+                    // LIMPAR conteúdo estático antes de criar elementos dinâmicos
+                    bumpList.innerHTML = '';
+                    console.log('🧹 orderBumpList limpo, criando elementos dinamicamente...');
+                    
                     // Criar items dos order bumps
                     Object.entries(window.ORDER_BUMPS).forEach(([key, bump]) => {
                         const item = document.createElement('div');
