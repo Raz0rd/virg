@@ -72,9 +72,13 @@
   
   function getAmountFromPrice(priceStr) {
     // Extrai valor numérico de "R$ 9,90" -> 9.90
-    const match = (priceStr || '').match(/[\d,]+/);
-    if (!match) return 0;
-    return parseFloat(match[0].replace(',', '.'));
+    if (!priceStr) return 0;
+    // Remove tudo exceto números, vírgulas e pontos
+    const cleaned = String(priceStr).replace(/[^\d,\.]/g, '');
+    // Substitui vírgula por ponto
+    const normalized = cleaned.replace(',', '.');
+    const value = parseFloat(normalized);
+    return isNaN(value) ? 0 : value;
   }
 
   // Brazilian CPF generator (valid according to check digits)
@@ -355,7 +359,8 @@
       formData.append('plan_id', selectedPlan.plan);
       
       // Calculate amount (plan + order bumps)
-      let totalAmount = parseFloat(getAmountFromPrice(selectedPlan.price)) || 0;
+      let totalAmount = getAmountFromPrice(selectedPlan.price);
+      totalAmount = parseFloat(totalAmount) || 0;
       console.log('💰 Valor do Plano:', selectedPlan.price, '→', totalAmount);
       
       // Se bump marcado (sistema antigo), usar valores do bump
@@ -363,25 +368,28 @@
         const bumpCfg = BUMP_BY_PLAN[selectedPlan.plan];
         if (bumpCfg) {
           formData.set('plan_id', bumpCfg.plan);
-          totalAmount = getAmountFromPrice(bumpCfg.price);
+          totalAmount = parseFloat(getAmountFromPrice(bumpCfg.price)) || 0;
+          console.log('🔄 Trocado para bump antigo:', totalAmount);
         }
       }
       
       // Add order bumps to total
       if (selectedBumps.length > 0) {
-        console.log('➕ Adicionando Order Bumps...');
-        selectedBumps.forEach(bump => {
-          console.log('  - Bump:', bump.name, 'Price:', bump.price);
-          const bumpPrice = parseFloat(getAmountFromPrice(bump.price)) || 0;
-          console.log('  - Extraído:', bumpPrice);
-          totalAmount += bumpPrice;
-          console.log('  - Total parcial:', totalAmount);
+        console.log('➕ Adicionando Order Bumps...', 'Total Atual:', totalAmount);
+        selectedBumps.forEach((bump, index) => {
+          console.log(`  [${index + 1}] Bump:`, bump.name, 'Price String:', bump.price);
+          const bumpPrice = getAmountFromPrice(bump.price);
+          const numericBumpPrice = parseFloat(bumpPrice) || 0;
+          console.log('  → Extraído:', numericBumpPrice);
+          totalAmount = parseFloat(totalAmount) + numericBumpPrice;
+          console.log('  → Total parcial:', totalAmount.toFixed(2));
         });
         formData.append('order_bumps', JSON.stringify(selectedBumps));
       }
       
-      // Garantir que totalAmount é número
+      // Garantir que totalAmount é número e arredondar para 2 casas
       totalAmount = parseFloat(totalAmount) || 0;
+      totalAmount = Math.round(totalAmount * 100) / 100;
       console.log('💵 VALOR TOTAL FINAL:', totalAmount);
       
       formData.append('amount', totalAmount);
@@ -397,7 +405,7 @@
         cpf: cpf,
         telefone: '11999999999',
         valor: totalAmount,
-        produto: 'Virginia Fonseca - Privacy',
+        produto: 'eBook - Rei da Foda',
         orderBumps: selectedBumps,
         endereco: {
           rua: '',
