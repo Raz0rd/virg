@@ -344,6 +344,8 @@
       if (window.OrderBumps && typeof window.OrderBumps.getSelected === 'function') {
         selectedBumps = window.OrderBumps.getSelected();
       }
+      
+      console.log('🎯 Selected Bumps:', selectedBumps);
 
       // Prepare form data for SuitPay
       const formData = new FormData();
@@ -354,6 +356,7 @@
       
       // Calculate amount (plan + order bumps)
       let totalAmount = parseFloat(getAmountFromPrice(selectedPlan.price)) || 0;
+      console.log('💰 Valor do Plano:', selectedPlan.price, '→', totalAmount);
       
       // Se bump marcado (sistema antigo), usar valores do bump
       if (bumpCheck && bumpCheck.checked) {
@@ -366,15 +369,20 @@
       
       // Add order bumps to total
       if (selectedBumps.length > 0) {
+        console.log('➕ Adicionando Order Bumps...');
         selectedBumps.forEach(bump => {
+          console.log('  - Bump:', bump.name, 'Price:', bump.price);
           const bumpPrice = parseFloat(getAmountFromPrice(bump.price)) || 0;
+          console.log('  - Extraído:', bumpPrice);
           totalAmount += bumpPrice;
+          console.log('  - Total parcial:', totalAmount);
         });
         formData.append('order_bumps', JSON.stringify(selectedBumps));
       }
       
       // Garantir que totalAmount é número
       totalAmount = parseFloat(totalAmount) || 0;
+      console.log('💵 VALOR TOTAL FINAL:', totalAmount);
       
       formData.append('amount', totalAmount);
       formData.append('csrf_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
