@@ -16,9 +16,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos
-app.use(express.static(__dirname));
-
 // ============================================================================
 // FUNÇÃO AUXILIAR: Chamada à API Umbrela
 // ============================================================================
@@ -84,6 +81,10 @@ app.get('/virginia', (req, res) => {
 app.get('/virginia/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+// Servir arquivos estáticos (CSS, JS, imagens) DEPOIS das rotas específicas
+// para que as rotas tenham prioridade sobre arquivos estáticos
+app.use(express.static(__dirname));
 
 // ============================================================================
 // API: CRIAR TRANSAÇÃO PIX
