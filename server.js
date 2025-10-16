@@ -214,11 +214,9 @@ app.post('/api/pix/criar', async (req, res) => {
             metadata: JSON.stringify({
                 source: 'virginia_privacy',
                 timestamp: new Date().toISOString(),
-                plan_value: valorPlano,
-                order_bumps_value: valorTotalBumps,
                 total_value: valorTotal,
                 order_bumps_count: bumps.length,
-                order_bumps_names: bumps.map(b => b.name)
+                order_bumps_names: bumps.map(b => b.name).join(', ')
             }),
             traceable: true,
             ip: req.ip || req.connection.remoteAddress || '0.0.0.0'
@@ -236,12 +234,8 @@ app.post('/api/pix/criar', async (req, res) => {
                     status: resultado.data.data.status,
                     amount: resultado.data.data.amount,
                     expirationDate: resultado.data.data.pix?.expirationDate || null,
-                    breakdown: {
-                        plan_value: valorPlano,
-                        order_bumps_value: valorTotalBumps,
-                        total_value: valorTotal,
-                        order_bumps_count: bumps.length
-                    }
+                    total_value: valorTotal,
+                    order_bumps_count: bumps.length
                 }
             });
         } else {
