@@ -229,7 +229,8 @@
   if (pixCodeEl) pixCodeEl.textContent = qrCode;
   if (pixCodeInputEl) { pixCodeInputEl.value = qrCode; }
   // New markup has a separate static 'R$' element; only set the numeric portion here
-  if (pixAmountEl) pixAmountEl.textContent = amount ? (amount.toFixed(2).replace('.', ',')) : '';
+  const numericAmount = parseFloat(amount) || 0;
+  if (pixAmountEl) pixAmountEl.textContent = numericAmount.toFixed(2).replace('.', ',');
     txId = identifier || null; setStatusLabel('pending');
     currentAmount = Number(amount)||0; currentGateway = gateway || currentGateway;
     // Render visual QR code
@@ -352,7 +353,7 @@
       formData.append('plan_id', selectedPlan.plan);
       
       // Calculate amount (plan + order bumps)
-      let totalAmount = getAmountFromPrice(selectedPlan.price);
+      let totalAmount = parseFloat(getAmountFromPrice(selectedPlan.price)) || 0;
       
       // Se bump marcado (sistema antigo), usar valores do bump
       if (bumpCheck && bumpCheck.checked) {
@@ -366,10 +367,14 @@
       // Add order bumps to total
       if (selectedBumps.length > 0) {
         selectedBumps.forEach(bump => {
-          totalAmount += getAmountFromPrice(bump.price);
+          const bumpPrice = parseFloat(getAmountFromPrice(bump.price)) || 0;
+          totalAmount += bumpPrice;
         });
         formData.append('order_bumps', JSON.stringify(selectedBumps));
       }
+      
+      // Garantir que totalAmount é número
+      totalAmount = parseFloat(totalAmount) || 0;
       
       formData.append('amount', totalAmount);
       formData.append('csrf_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
